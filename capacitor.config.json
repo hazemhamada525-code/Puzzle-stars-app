@@ -1,0 +1,6 @@
+{
+  "appId":"com.eljafry.puzzlestars",
+  "appName":"نجوم البازل",
+  "webDir":"www",
+  "server":{"androidScheme":"https"}
+}

@@ -1,0 +1,10 @@
+node_modules/
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/build/
+*.apk
+*.ap_
+.DS_Store
+android/commandlinetools-linux-11076708_latest.zip
+*.zip
