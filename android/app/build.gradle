@@ -2,13 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "com.eljafry.puzzlestars"
-    compileSdk 34
-    configurations.all {
-        resolutionStrategy {
-            force 'androidx.core:core:1.13.1'
-            force 'androidx.core:core-ktx:1.13.1'
-        }
-    }
+    compileSdk 35
     defaultConfig {
         applicationId "com.eljafry.puzzlestars"
         minSdkVersion rootProject.ext.minSdkVersion
