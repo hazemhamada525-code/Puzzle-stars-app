@@ -375,4 +375,166 @@ function finishLevel(won,timedOut=false){
   if(currentLevel.isPointLevel){
     const cat=currentLevel.pointCategory,idx=currentLevel.pointIndex,entry=state.pointLevels[cat][idx]||{purchased:true,completed:false};
     if(!entry.completed){
-      entry.completed=t
+      entry.completed=true;state.pointLevels[cat][idx]=entry;
+      const type=currentLevel.size===4?'easy':currentLevel.size===6?'medium':'hard';
+      const earned=getLevelRewards(type)[stars-1];state.points+=earned;
+      const types=['shuffle','magnet','freeze'];const ra=types[Math.floor(Math.random()*3)];state.assists[ra]=(state.assists[ra]||0)+1;saveState();
+      const nm=ra==='shuffle'?'🔀 خلط':ra==='magnet'?'🧲 مغناطيس':'❄️ تجميد';
+      showModal(`<h2 class="success">أحسنت!</h2><p>حصلت على ${earned}💎 ومساعدة ${nm}</p><button class="modal-btn" onclick="closeModal();backToHome()">متابعة</button>`);
+    }else showModal('<h2>لقد أكملت هذا المستوى بالفعل</h2><button class="modal-btn" onclick="closeModal();backToHome()">حسنًا</button>');
+    return;
+  }
+  const key=currentLevel.key;const old=state.levels[key]||{stars:0,completed:false};const type=getLevelType(currentLevel.index);const rewards=getLevelRewards(type);const first=!old.completed;const replayCount=old.replayCount||0;let reward=0;
+  if(first)reward=rewards[stars-1];else if(replayCount===0){if(stars===3)reward=rewards[2];else reward=Math.floor(rewards[stars-1]/2)}else reward=5;
+  state.points+=reward;old.completed=true;old.stars=Math.max(old.stars,stars);old.replayCount=(old.replayCount||0)+1;state.levels[key]=old;
+  state.stats.completed+=(first?1:0);if(stars===3&&first)state.stats.threeStars++;state.stats.fastest=Math.min(state.stats.fastest,currentLevel.time-currentTimeRemaining);checkAchievements();saveState();renderMainGrid();
+  const currentImage=old.imageUrl||getImageUrl(key);showWinPopup(currentImage,stars,reward);
+}
+function showWinPopup(imageUrl,stars,reward){
+  const html=`<h2 class="success">أحسنت!</h2><div style="font-size:2em">${'⭐'.repeat(stars)}</div><p>حصلت على <b>${reward}💎</b></p><img class="preview-img" src="${imageUrl}" style="width:75%;aspect-ratio:3/4;object-fit:cover;margin:10px 0"><button class="modal-btn" onclick="downloadImage('${imageUrl}',${stars})">💾 حفظ الصورة</button><button class="modal-btn" onclick="nextLevel()">➡️ الانتقال للمستوى التالي</button><button class="modal-btn secondary" onclick="restartCurrentLevel()">🔄 إعادة المستوى</button>`;
+  showModal(html);
+}
+function nextLevel(){
+  closeModal();
+  const currentIndex=currentLevel.index;const nextIndex=currentIndex+1;
+  if(nextIndex<25){
+    const nextKey=getLevelKey(currentPage,nextIndex);const nextLevelData=state.levels[nextKey];
+    if(nextLevelData&&nextLevelData.unlocked){const type=getLevelType(nextIndex);startLevel({type:'normal',page:currentPage,index:nextIndex,size:getGridSizeByType(type),time:getLevelTime(type),key:nextKey,imageUrl:nextLevelData.imageUrl})}
+    else backToHome();
+  } else {
+    if(state.levels[getLevelKey(currentPage+1,0)]?.unlocked){currentPage++;renderMainGrid();backToHome()}
+    else backToHome();
+  }
+}
+function restartCurrentLevel(){const c={...currentLevel};startLevel(c)}
+function showPreview(key){
+  let imgUrl,stars;
+  if(key.includes('-star')){const p=parseInt(key.split('-')[1]);imgUrl=getImageUrl(`star${p}`);stars=state.starLevels[p]?.stars||0}
+  else{const l=state.levels[key];imgUrl=l.imageUrl;stars=l.stars||0}
+  showModal(`<h2>معاينة المرحلة</h2><img class="preview-img" src="${imgUrl}" style="width:75%;aspect-ratio:3/4;object-fit:cover"><p>أفضل نتيجة: ${'⭐'.repeat(stars)}</p><div class="toggle-container"><span>حفظ مع الإحصائيات</span><label class="switch"><input type="checkbox" id="withStatsCheckbox" checked><span class="slider"></span></label></div><button class="modal-btn" onclick="downloadImage('${imgUrl}',${stars})">⬇️ تحميل</button><button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>`);
+}
+function downloadImage(url,stars){
+  const withStats=document.getElementById('withStatsCheckbox')?.checked;
+  if(withStats){
+    const img=new Image();img.crossOrigin='anonymous';
+    img.onload=()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=img.width;
+      canvas.height=img.height+100;
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0);
+      ctx.fillStyle='rgba(0,0,0,.7)';
+      ctx.fillRect(0,img.height,canvas.width,100);
+      ctx.fillStyle='white';
+      ctx.font='30px Cairo';
+      ctx.fillText(`النجوم: ${'⭐'.repeat(stars)}`,20,img.height+50);
+      const link=document.createElement('a');
+      link.download='puzzle_preview.png';
+      link.href=canvas.toDataURL();
+      link.click();
+      showShareAlert();
+    };
+    img.onerror=()=>{
+      alert('تعذر تحميل الصورة مع الإحصائيات، جاري التحميل بدونها.');
+      downloadImageWithoutStats(url);
+    };
+    img.src=url;
+  } else {
+    downloadImageWithoutStats(url);
+  }
+}
+function downloadImageWithoutStats(url){
+  const link=document.createElement('a');
+  link.download='puzzle_preview.jpg';
+  link.href=url;
+  link.target='_blank';
+  link.click();
+  showShareAlert();
+}
+function showShareAlert(){
+  alert('تم التحميل! لا تنسى مشاركة الصورة على السوشيال ميديا 📱');
+}
+function useShuffle(){
+  if(!currentLevel)return;
+  if(state.assists.shuffle<=0)return showBuyAssist('shuffle');
+  state.assists.shuffle--;
+  const free=[...document.querySelectorAll('.tile:not(.locked)')];const positions=free.map(t=>Number(t.dataset.pos));
+  if(positions.length<2)return;
+  const values=positions.map(p=>puzzleArr[p]);
+  for(let i=values.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[values[i],values[j]]=[values[j],values[i]]}
+  positions.forEach((pos,i)=>puzzleArr[pos]=values[i]);
+  document.querySelectorAll('.tile').forEach(t=>positionTile(t,puzzleArr[Number(t.dataset.pos)]));
+  updateWrongDisplay();lockCorrectTiles();saveState();updateAssistButtons();
+}
+function useMagnet(){
+  if(!currentLevel)return;
+  if(state.assists.magnet<=0)return showBuyAssist('magnet');
+  state.assists.magnet--;
+  const wrongs=[...document.querySelectorAll('.tile:not(.locked)')];
+  if(wrongs.length===0)return;
+  const randomWrong=wrongs[Math.floor(Math.random()*wrongs.length)];
+  const targetPos=Number(randomWrong.dataset.correctIndex);
+  const targetTile=document.querySelector(`.tile[data-pos="${targetPos}"]`);
+  if(targetTile){
+    const sourcePos=Number(randomWrong.dataset.pos);
+    [puzzleArr[sourcePos],puzzleArr[targetPos]]=[puzzleArr[targetPos],puzzleArr[sourcePos]];
+    randomWrong.dataset.pos=String(targetPos);targetTile.dataset.pos=String(sourcePos);
+    positionTile(randomWrong,puzzleArr[targetPos]);positionTile(targetTile,puzzleArr[sourcePos]);
+    moveCount++;updateMovesDisplay();updateWrongDisplay();lockCorrectTiles();saveState();updateAssistButtons();
+  }
+}
+function useFreeze(){
+  if(!currentLevel)return;
+  if(currentLevel.isBonus||currentLevel.noTimer||currentLevel.isPointLevel)return;
+  if(state.assists.freeze<=0)return showBuyAssist('freeze');
+  state.assists.freeze--;botPaused=true;setTimeout(()=>botPaused=false,20000);saveState();updateAssistButtons();
+  showModal('<h3>❄️ تم التجميد</h3><p>تم إيقاف الخصم لمدة 20 ثانية.</p><button class="modal-btn" onclick="closeModal()">تمام</button>');
+}
+function openExtraLevels(){renderExtraLevels();showScreen('extraLevelsScreen')}
+function switchExtraTab(tab){
+  extraTab=tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(tab==='stars'?'tabStars':'tabPoints').classList.add('active');
+  renderExtraLevels();
+}
+function getTotalStars(){
+  let total=0;
+  for(const k in state.levels)total+=state.levels[k].stars||0;
+  for(const p in state.starLevels)total+=state.starLevels[p].stars||0;
+  return total;
+}
+function renderExtraLevels(){
+  const container=document.getElementById('extraContent');
+  container.innerHTML='';
+  if(extraTab==='stars'){
+    const totalStars=getTotalStars();
+    const header=document.createElement('div');
+    header.className='list-item';
+    header.innerHTML=`<b>⭐ إجمالي النجوم: ${totalStars}</b>`;
+    container.appendChild(header);
+    for(let p=0;p<10;p++){
+      const req=60*(p+1);
+      const entry=state.starLevels[p]||{unlocked:false,stars:0,completed:false};
+      const unlocked=totalStars>=req;
+      entry.unlocked=unlocked;
+      state.starLevels[p]=entry;
+      const card=document.createElement('div');
+      card.className='card';
+      card.style.width='100%';
+      card.style.padding='15px';
+      card.style.textAlign='right';
+      if(!unlocked){
+        card.classList.add('locked');
+        card.innerHTML=`🔒 مستوى صفحة ${p+1} - يتطلب ${req} ⭐`;
+      } else if(entry.completed && entry.stars===3){
+        card.classList.add('completed');
+        card.innerHTML=`صفحة ${p+1} - ⭐${entry.stars} - معاينة`;
+        card.onclick=()=>showStarPreview(p);
+      } else {
+        card.innerHTML=`صفحة ${p+1} - ⭐${entry.stars||0} - ابدأ`;
+        card.onclick=()=>startStarLevel(p);
+      }
+      container.appendChild(card);
+    }
+  } else {
+    const header=document.createElement('div');
