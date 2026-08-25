@@ -538,3 +538,116 @@ function renderExtraLevels(){
     }
   } else {
     const header=document.createElement('div');
+    header.className='list-item';
+    header.innerHTML=`<b>💎 النقاط: ${state.points}</b>`;
+    container.appendChild(header);
+    const cats=[
+      {key:'easy',name:'سهل',size:4,cost:500},
+      {key:'medium',name:'متوسط',size:6,cost:1000},
+      {key:'hard',name:'صعب',size:8,cost:1500}
+    ];
+    cats.forEach(cat=>{
+      const catHeader=document.createElement('div');
+      catHeader.className='list-item';
+      catHeader.innerHTML=`<b>${cat.name} - ${cat.cost}💎</b>`;
+      container.appendChild(catHeader);
+      for(let i=0;i<20;i++){
+        const entry=state.pointLevels[cat.key][i]||{purchased:false,completed:false};
+        const card=document.createElement('div');
+        card.className='card';
+        card.style.width='100%';
+        card.style.padding='10px';
+        card.style.textAlign='right';
+        if(!entry.purchased){
+          card.innerHTML=`${cat.name} ${i+1} (${cat.size}×${cat.size}) - ${cat.cost}💎`;
+          card.onclick=()=>buyPointLevel(cat.key,i,cat.cost,cat.size);
+        } else if(entry.completed){
+          card.classList.add('completed');
+          card.innerHTML=`${cat.name} ${i+1} - ✅ مكتمل`;
+          card.onclick=()=>startPointLevel(cat.key,i,cat.size);
+        } else {
+          card.innerHTML=`${cat.name} ${i+1} - ابدأ`;
+          card.onclick=()=>startPointLevel(cat.key,i,cat.size);
+        }
+        container.appendChild(card);
+      }
+    });
+  }
+  saveState();
+  gsap.fromTo('#extraContent .card',{opacity:0,y:20},{opacity:1,y:0,duration:0.3,stagger:0.03,ease:'power2.out'});
+}
+function startStarLevel(page){
+  const entry=state.starLevels[page];
+  if(!entry || !entry.unlocked)return;
+  startLevel({type:'normal',isStarLevel:true,page,index:-1,size:8,time:180,key:`star-${page}`,imageUrl:getImageUrl(`star${page}`)});
+}
+function showStarPreview(page){
+  showModal(`<h2>معاينة مستوى النجوم صفحة ${page+1}</h2><img class="preview-img" src="${getImageUrl('star'+page)}" style="width:75%;aspect-ratio:3/4;object-fit:cover"><button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>`);
+}
+function buyPointLevel(category,index,cost,size){
+  if(state.points>=cost){
+    state.points-=cost;
+    if(!state.pointLevels[category][index])state.pointLevels[category][index]={};
+    state.pointLevels[category][index].purchased=true;
+    saveState();updatePointsDisplay();renderExtraLevels();
+  } else {
+    showModal('<h3>لا يوجد نقاط كافية</h3><button class="modal-btn" onclick="closeModal()">موافق</button>');
+  }
+}
+function startPointLevel(category,index,size){
+  startLevel({type:'normal',isPointLevel:true,noTimer:true,pointCategory:category,pointIndex:index,size,key:`point-${category}-${index}`,imageUrl:getImageUrl(`point${category}${index}`)});
+}
+function openCumulativeBonus(){renderBonus();showScreen('bonusScreen')}
+function renderBonus(){
+  const levels=[5,10,20,35,55,80,110,150];
+  document.getElementById('bonusList').innerHTML=levels.map((need,i)=>{
+    const done=state.bonusLevels[i];
+    return `<div class="list-item"><b>💰 بونص ${i+1}</b><div>أكمل ${need} مرحلة إجمالاً</div><div>${done?'✅ تم الاستلام':'🎁 مكافأة '+(50+i*50)+'💎'}</div>${!done&&state.stats.completed>=need?`<button class="modal-btn" onclick="claimBonus(${i},${50+i*50})">استلام</button>`:''}</div>`;
+  }).join('');
+  gsap.fromTo('#bonusList .list-item',{opacity:0,y:15},{opacity:1,y:0,duration:0.3,stagger:0.05,ease:'power2.out'});
+}
+function claimBonus(i,reward){
+  if(state.bonusLevels[i] || state.stats.completed<[5,10,20,35,55,80,110,150][i])return;
+  state.bonusLevels[i]=true;
+  state.points+=reward;
+  state.stats.bonusCompleted++;
+  checkAchievements();saveState();renderBonus();updatePointsDisplay();
+}
+function checkAchievements(){
+  const done=state.achievements||{};
+  if(state.stats.completed>=1)done.first=true;
+  if(state.stats.threeStars>=10)done.stars=true;
+  if(state.stats.fastest<15)done.speed=true;
+  if(state.stats.challengesWon>=3)done.warrior=true;
+  if(state.stats.bonusCompleted>=3)done.bonus=true;
+  state.achievements=done;
+}
+const challengeData=[
+  {name:'هاو',size:5,timeRange:[30,60],entryFee:2,winCoins:5,loseCoins:2,botSpeed:0.8},
+  {name:'مبتدأ',size:6,timeRange:[45,90],entryFee:5,winCoins:10,loseCoins:5,botSpeed:0.9},
+  {name:'ماهر',size:8,timeRange:[60,120],entryFee:10,winCoins:20,loseCoins:10,botSpeed:1.0},
+  {name:'ممتاز',size:10,timeRange:[90,150],entryFee:20,winCoins:40,loseCoins:20,botSpeed:1.1},
+  {name:'خبير',size:12,timeRange:[120,180],entryFee:40,winCoins:80,loseCoins:40,botSpeed:1.2},
+  {name:'اسطوري',size:15,timeRange:[150,240],entryFee:80,winCoins:160,loseCoins:80,botSpeed:1.3}
+];
+function openChallenges(){updateDailyTickets();renderChallenges();showScreen('challengesScreen')}
+function renderChallenges(){
+  document.getElementById('challengeList').innerHTML=challengeData.map((ch,i)=>`<div class="list-item"><b>⚔️ ${ch.name} (${ch.size}×${ch.size})</b><div class="muted">رسوم: ${ch.entryFee} عملات - فوز: ${ch.winCoins} عملات</div><button class="modal-btn" onclick="startChallengeLevel(${i})">ابدأ</button></div>`).join('');
+  gsap.fromTo('#challengeList .list-item',{opacity:0,x:-20},{opacity:1,x:0,duration:0.3,stagger:0.05,ease:'power2.out'});
+}
+function startChallengeLevel(index){
+  updateDailyTickets();
+  const ch=challengeData[index];
+  const hasTicket=state.dailyTickets.count>0;
+  if(hasTicket){
+    if(confirm(`استخدام تذكرة للدخول؟ (لديك ${state.dailyTickets.count})`)){
+      state.dailyTickets.count--;saveState();startChallengeGame(ch,true);
+    }
+  } else if(state.challengeCoins>=ch.entryFee){
+    if(confirm(`دفع ${ch.entryFee} عملات منافسة؟`)){
+      state.challengeCoins-=ch.entryFee;saveState();startChallengeGame(ch,false);
+    }
+  } else {
+    showModal('<h3>لا توجد تذاكر أو عملات كافية</h3><p>يمكنك شراء تذكرة أو عملات من الأسفل.</p><button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>');
+  }
+}
