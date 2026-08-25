@@ -651,3 +651,199 @@ function startChallengeLevel(index){
     showModal('<h3>لا توجد تذاكر أو عملات كافية</h3><p>يمكنك شراء تذكرة أو عملات من الأسفل.</p><button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>');
   }
 }
+function startChallengeGame(ch,usedTicket){
+  currentChallenge={...ch,usedTicket};
+  const min=ch.timeRange[0],max=ch.timeRange[1];
+  let time=Math.floor(Math.random()*(max-min+1))+min;
+  time=Math.ceil(time/3)*3;
+  startLevel({type:'challenge',isChallenge:true,size:ch.size,time,reward:ch.winCoins,imageUrl:getImageUrl(`challenge-${ch.name}`)});
+}
+function startBot(){
+  botPaused=false;botWrongCount=countWrongTilesFromArr(botPuzzleArr);clearInterval(botInterval);
+  const ch=currentChallenge;
+  if(ch.name==='هاو'){
+    let step=0;
+    botInterval=setInterval(()=>{
+      if(botPaused||modalPause||!currentLevel)return;
+      const total=botPuzzleArr.length,targetPos=(total-1)-(step%total),pieceValue=1,currentPos=botPuzzleArr.indexOf(pieceValue);
+      if(currentPos!==targetPos&&botPuzzleArr[targetPos]!==pieceValue){
+        [botPuzzleArr[currentPos],botPuzzleArr[targetPos]]=[botPuzzleArr[targetPos],botPuzzleArr[currentPos]];
+        botWrongCount=countWrongTilesFromArr(botPuzzleArr);updateChallengeDisplay();
+        if(isSolved(botPuzzleArr)){clearIntervals();finishChallenge(false);}
+      }
+      step++;
+    },2000);
+  } else {
+    botInterval=setInterval(()=>{
+      if(botPaused||modalPause||!currentLevel)return;
+      const candidates=[];
+      for(let i=0;i<botPuzzleArr.length;i++)if(botPuzzleArr[i]!==i)candidates.push(i);
+      if(!candidates.length)return;
+      const pos=candidates[Math.floor(Math.random()*candidates.length)],want=botPuzzleArr[pos],target=botPuzzleArr.indexOf(pos);
+      if(target>=0)[botPuzzleArr[pos],botPuzzleArr[target]]=[botPuzzleArr[target],botPuzzleArr[pos]];
+      botWrongCount=countWrongTilesFromArr(botPuzzleArr);updateChallengeDisplay();
+      if(isSolved(botPuzzleArr)){clearIntervals();finishChallenge(false);}
+    },Math.max(1000,Math.floor((currentLevel.time*1000)/(puzzleArr.length*1.5))));
+  }
+}
+function updateChallengeDisplay(){updateWrongDisplay()}
+function useStopOpponent(){
+  if(!currentLevel?.isChallenge)return;
+  if(state.assists.freeze<=0)return showBuyAssist('freeze');
+  state.assists.freeze--;botPaused=true;setTimeout(()=>botPaused=false,7000);saveState();updateAssistButtons();
+  showModal('<h3>🚫 تم إيقاف الخصم</h3><p>الخصم متوقف 7 ثوانٍ.</p><button class="modal-btn" onclick="closeModal()">تمام</button>');
+}
+function finishChallenge(playerWon){
+  clearIntervals();
+  if(playerWon){
+    state.challengeCoins+=currentChallenge.winCoins;
+    state.stats.challengesWon++;checkAchievements();saveState();
+    showModal(`<h2 class="success">فوز!</h2><p>حصلت على ${currentChallenge.winCoins} عملة منافسة.</p><button class="modal-btn" onclick="closeModal();backToHome()">متابعة</button>`);
+  } else {
+    if(currentChallenge.usedTicket){
+      showModal('<h2 class="danger">الخصم سبقك!</h2><p>لكن التذكرة حمتك من خسارة العملات.</p><button class="modal-btn" onclick="closeModal();backToHome()">رجوع</button>');
+    } else {
+      state.challengeCoins=Math.max(0,state.challengeCoins-currentChallenge.loseCoins);
+      saveState();
+      showModal(`<h2 class="danger">الخصم سبقك!</h2><p>خسرت ${currentChallenge.loseCoins} عملات منافسة.</p><button class="modal-btn" onclick="closeModal();backToHome()">رجوع</button>`);
+    }
+  }
+}
+function buyTickets(){
+  if(state.points<200)return showModal('<h3>النقاط غير كافية</h3><button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>');
+  state.points-=200;state.dailyTickets.count++;saveState();updatePointsDisplay();renderChallenges();
+}
+function buyChallengeCoins(){
+  if(state.points<50)return showModal('<h3>النقاط غير كافية</h3><button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>');
+  state.points-=50;state.challengeCoins+=10;saveState();updatePointsDisplay();
+}
+function openStore(){renderStore();showScreen('storeScreen')}
+function renderStore(){
+  const items=[
+    ['shuffle','🔀 خلط إضافي',5,'shuffle'],
+    ['magnet','🧲 مغناطيس إضافي',15,'magnet'],
+    ['freeze','❄️ تجميد إضافي',10,'freeze'],
+    ['tickets','🎫 تذكرة تحدي',200,'tickets']
+  ];
+  document.getElementById('storeItems').innerHTML=items.map(x=>{
+    const count=(x[3]==='tickets')?state.dailyTickets.count:(state.assists[x[3]]||0);
+    return `<div class="store-item"><div><b>${x[1]}</b><div class="muted">${x[2]}💎</div></div><span class="count-badge">${count}</span><button class="action-btn" onclick="confirmPurchase('${x[3]}',${x[2]})">شراء</button></div>`;
+  }).join('');
+  gsap.fromTo('#storeItems .store-item',{opacity:0,y:15},{opacity:1,y:0,duration:0.3,stagger:0.05,ease:'power2.out'});
+}
+function confirmPurchase(type,cost){
+  showModal(`<h3>في المتجر فقط، لإتمام عملية الشراء</h3><p>شراء ${type} مقابل ${cost}💎؟</p><button class="modal-btn" onclick="buyItem('${type}',${cost})">تأكيد</button><button class="modal-btn secondary" onclick="closeModal()">إلغاء</button>`);
+}
+function buyItem(type,cost){
+  if(state.points<cost)return showModal('<h3>النقاط غير كافية</h3><button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>');
+  state.points-=cost;
+  if(type==='tickets')state.dailyTickets.count++;else state.assists[type]++;
+  saveState();updatePointsDisplay();renderStore();updateAssistButtons();closeModal();
+}
+
+function openSettings(){
+  const totalStars=getTotalStars();
+  const completedLevels=Object.values(state.levels).filter(l=>l.completed).length;
+  const fastest=state.stats.fastest===999999?'—':state.stats.fastest+' ثانية';
+  const html=`<h2>⚙️ الإعدادات والإحصائيات</h2>
+  <div style="text-align:right;margin:10px 0">
+  <p><b>⭐ إجمالي النجوم:</b> ${totalStars}</p>
+  <p><b>💎 النقاط:</b> ${state.points}</p>
+  <p><b>💰 عملات المنافسة:</b> ${state.challengeCoins}</p>
+  <p><b>✅ المستويات المكتملة:</b> ${completedLevels}</p>
+  <p><b>⚡ أسرع وقت:</b> ${fastest}</p>
+  <p><b>⚔️ تحديات مكسبوة:</b> ${state.stats.challengesWon}</p>
+  </div>
+  <button class="modal-btn secondary" onclick="resetData()">🗑️ مسح البيانات وإعادة التعيين</button>
+  <button class="modal-btn" onclick="closeModal()">إغلاق</button>`;
+  showModal(html);
+}
+function resetData(){
+  if(confirm('هل أنت متأكد من مسح جميع البيانات؟')){
+    localStorage.removeItem(STORAGE_KEY);
+    state=createInitialState();
+    ensureStateStructure();
+    saveState();
+    closeModal();backToHome();
+    alert('تم مسح البيانات وإعادة التعيين.');
+  }
+}
+let titleTapCount=0,titleTapTimer=null;
+function onTitleClick(){
+  titleTapCount++;
+  clearTimeout(titleTapTimer);
+  titleTapTimer=setTimeout(()=>{titleTapCount=0},2000);
+  if(titleTapCount>=5){
+    titleTapCount=0;clearTimeout(titleTapTimer);showCheatMenu();
+  }
+}
+function showCheatMenu(){
+  const currentPoints=state.points,currentCoins=state.challengeCoins,currentTickets=state.dailyTickets.count;
+  const currentShuffle=state.assists.shuffle||0,currentMagnet=state.assists.magnet||0,currentFreeze=state.assists.freeze||0;
+  const totalStars=getTotalStars();
+  const html=`<h2>🧪 قائمة الغش</h2>
+  <div style="text-align:right;margin:10px 0">
+  <div><b>💎 النقاط</b> <input type="text" id="cheatPoints" value="${currentPoints}" style="width:100px;padding:5px;border-radius:8px;border:1px solid #ccc"></div>
+  <div><b>💰 عملات المنافسة</b> <input type="text" id="cheatCoins" value="${currentCoins}" style="width:100px;padding:5px;border-radius:8px;border:1px solid #ccc"></div>
+  <div><b>🎫 التذاكر</b> <input type="text" id="cheatTickets" value="${currentTickets}" style="width:100px;padding:5px;border-radius:8px;border:1px solid #ccc"></div>
+  <div><b>🔀 خلط</b> <input type="text" id="cheatShuffle" value="${currentShuffle}" style="width:100px;padding:5px;border-radius:8px;border:1px solid #ccc"></div>
+  <div><b>🧲 مغناطيس</b> <input type="text" id="cheatMagnet" value="${currentMagnet}" style="width:100px;padding:5px;border-radius:8px;border:1px solid #ccc"></div>
+  <div><b>❄️ تجميد</b> <input type="text" id="cheatFreeze" value="${currentFreeze}" style="width:100px;padding:5px;border-radius:8px;border:1px solid #ccc"></div>
+  <div><b>⭐ إجمالي النجوم</b> <input type="text" value="${totalStars}" disabled style="width:100px;padding:5px;border-radius:8px;border:1px solid #ccc"></div>
+  </div>
+  <button class="modal-btn" onclick="applyCheat()">تطبيق التعديلات</button>
+  <button class="modal-btn" onclick="cheatUnlockAll()">فتح كل المستويات</button>
+  <button class="modal-btn secondary" onclick="closeModal()">إغلاق</button>`;
+  showModal(html);
+}
+function applyCheat(){
+  const parseMod=(id,current)=>{
+    const val=document.getElementById(id).value.trim();
+    if(val.startsWith('+')||val.startsWith('-'))return Math.max(0,current+parseInt(val));
+    return Math.max(0,parseInt(val)||0);
+  };
+  state.points=parseMod('cheatPoints',state.points);
+  state.challengeCoins=parseMod('cheatCoins',state.challengeCoins);
+  state.dailyTickets.count=parseMod('cheatTickets',state.dailyTickets.count);
+  state.assists.shuffle=parseMod('cheatShuffle',state.assists.shuffle||0);
+  state.assists.magnet=parseMod('cheatMagnet',state.assists.magnet||0);
+  state.assists.freeze=parseMod('cheatFreeze',state.assists.freeze||0);
+  saveState();updatePointsDisplay();updateAssistButtons();closeModal();
+  alert('تم تطبيق التعديلات');
+}
+function cheatUnlockAll(){
+  for(let i=0;i<25;i++){
+    const key=getLevelKey(currentPage,i);
+    if(!state.levels[key])state.levels[key]={};
+    state.levels[key].unlocked=true;state.levels[key].completed=true;state.levels[key].stars=3;
+  }
+  for(let p=0;p<10;p++){
+    state.starLevels[p]={unlocked:true,stars:3,completed:true};
+  }
+  ['easy','medium','hard'].forEach(cat=>{
+    for(let i=0;i<20;i++){
+      state.pointLevels[cat][i]={purchased:true,completed:true};
+    }
+  });
+  saveState();renderMainGrid();closeModal();
+  alert('تم فتح جميع المستويات');
+}
+
+function init(){
+  updateDailyTickets();
+  document.body.classList.toggle('light-mode',state.theme==='light');
+  renderMainGrid();updatePointsDisplay();updateAssistButtons();
+  const titleEl=document.querySelector('.game-title');
+  if(titleEl)titleEl.addEventListener('click',onTitleClick);
+}
+window.addEventListener('resize',()=>{
+  if(currentLevel){
+    boardWidth=Math.min(window.innerWidth*.9,450);
+    boardHeight=Math.min(window.innerHeight*.65,boardWidth*4/3);
+    const c=document.getElementById('puzzleContainer');
+    c.style.width=boardWidth+'px';
+    c.style.height=boardHeight+'px';
+    document.querySelectorAll('.tile').forEach(t=>positionTile(t,puzzleArr[Number(t.dataset.pos)]));
+  }
+});
+init();
